@@ -144,38 +144,7 @@
 
     // ==== Canvas Setup ====
 // —— Responsive High-DPI Canvas Setup ——
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
 
-function resizeCanvas() {
-  // Grab devicePixelRatio so we render crisply on phones/tablets
-  const dpr = window.devicePixelRatio || 1;
-  // CSS size (the “on-screen” size)
-  const cssWidth  = window.innerWidth;
-  const cssHeight = window.innerHeight;
-  // Canvas pixel size = CSS size × DPR
-  canvas.width  = cssWidth  * dpr;
-  canvas.height = cssHeight * dpr;
-  // Scale the drawing context so 1 unit = 1 CSS px
-  ctx.resetTransform();        // clear any existing transforms
-  ctx.scale(dpr, dpr);
-
-  // Update logical “W” and “H” to the CSS dimensions
-  W = cssWidth;
-  H = cssHeight;
-
-  // Reposition any objects tied to W/H
-  player.x = player.radius + 20;
-  player.y = H - player.radius - 20;
-  boss.centerX = W - boss.radius - 20;
-  boss.centerY = boss.radius + 20;
-}
-
-// Call once, then on every resize
-let W, H;
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
-// ———————————————————————————————
 
 
     // ==== DOM Elements ====
@@ -272,7 +241,38 @@ playerImg.src = "digi_bird.png";  // ← make sure this matches your filename an
     };
     const bossImg = new Image();
     bossImg.src = "techno_boss.png";
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
+function resizeCanvas() {
+  // Grab devicePixelRatio so we render crisply on phones/tablets
+  const dpr = window.devicePixelRatio || 1;
+  // CSS size (the “on-screen” size)
+  const cssWidth  = window.innerWidth;
+  const cssHeight = window.innerHeight;
+  // Canvas pixel size = CSS size × DPR
+  canvas.width  = cssWidth  * dpr;
+  canvas.height = cssHeight * dpr;
+  // Scale the drawing context so 1 unit = 1 CSS px
+  ctx.resetTransform();        // clear any existing transforms
+  ctx.scale(dpr, dpr);
+
+  // Update logical “W” and “H” to the CSS dimensions
+  W = cssWidth;
+  H = cssHeight;
+
+  // Reposition any objects tied to W/H
+  player.x = player.radius + 20;
+  player.y = H - player.radius - 20;
+  boss.centerX = W - boss.radius - 20;
+  boss.centerY = boss.radius + 20;
+}
+
+// Call once, then on every resize
+let W, H;
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+// ———————————————————————————————
     // ==== Projectile Class ====
     class Projectile {
       constructor(type) {
