@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Neon Rhythm Hit Game (Magnetic Arc & Health/Music Updates)</title>
+  <style>
+    /* === Global Reset === */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: "Arial", sans-serif;
+    }
+
+    /* === Canvas === */
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #0a0a0a;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    /* === Neon Start Button === */
+    #startButton {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 2rem;
+      color: #00ffff;
+      background: transparent;
+      border: 3px solid #00ffff;
+      border-radius: 10px;
+      text-shadow: 0 0 10px #00ffff, 0 0 20px #ff00ff;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s ease;
+    }
+    #startButton:hover {
+      color: #ff00ff;
+      border-color: #ff00ff;
+      text-shadow: 0 0 20px #ff00ff, 0 0 30px #00ffff;
+    }
+
+    /* === Overlay (countdown, stage text) === */
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      color: #00ffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5rem;
+      text-shadow: 0 0 20px #00ffff, 0 0 30px #ff00ff;
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    /* === UI Text (lives, multiplier, stage, boss health) === */
+    #uiContainer {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      z-index: 5;
+      color: #ff00ff;
+      text-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff;
+      font-size: 1.5rem;
+      line-height: 1.4;
+      display: none; /* visible after START */
+    }
+    #uiContainer div {
+      margin-bottom: 6px;
+    }
+
+    /* === Boss Health Bar === */
+    #healthBarContainer {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 300px;
+      height: 25px;
+      border: 2px solid #00ffff;
+      border-radius: 5px;
+      overflow: hidden;
+      z-index: 5;
+      display: none; /* visible after START */
+    }
+    #healthBar {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, #00ffff 0%, #ff00ff 100%);
+    }
+  </style>
+</head>
+<body>
+  <!-- Canvas for drawing -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Start Button -->
+  <button id="startButton">START</button>
+
+  <!-- Countdown / Stage Overlay -->
+  <div id="overlay"></div>
+
+  <!-- UI Container (Lives, Multiplier, Stage, Boss Text) -->
+  <div id="uiContainer">
+    <div id="livesText">Lives: 10</div>
+    <div id="multiplierText">Multiplier: 1×</div>
+    <div id="stageText">Stage: 1</div>
+    <div id="bossHealthText">Boss Health: 100 / 100</div>
+  </div>
+
+  <!-- Boss Health Bar -->
+  <div id="healthBarContainer">
+    <div id="healthBar"></div>
+  </div>
+
+  <!-- Background Music -->
+  <audio id="bgm" src="songs/edm-boss.mp3" preload="auto"></audio>
+
+  <script>
+    /* ===========================================
+       Neon Rhythm Hit Game
+       - Magnetic Arc Returns with Lateral Veer
+       - Slower “Medium” Stage, Faster Early Ramp
+       - Boss Health = 100 & Music Fades Out on Win
+       - Thinner Solid Ring (10px)
+       - Web Audio Glitch Tone
+       =========================================== */
+
+    // ==== Canvas Setup ====
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    let W = (canvas.width = window.innerWidth);
+    let H = (canvas.height = window.innerHeight);
+
+    window.addEventListener("resize", () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+      player.x = playerRadius + 20;
+      player.y = H - playerRadius - 20;
+      boss.centerX = W - bossRadius - 60;
+      boss.centerY = bossRadius + 40;
+    });
+
+    // ==== DOM Elements ====
+    const startButton = document.getElementById("startButton");
+    const overlay = document.getElementById("overlay");
+    const uiContainer = document.getElementById("uiContainer");
+    const livesText = document.getElementById("livesText");
+    const multiplierText = document.getElementById("multiplierText");
+    const stageText = document.getElementById("stageText");
+    const bossHealthText = document.getElementById("bossHealthText");
+    const healthBarContainer = document.getElementById("healthBarContainer");
+    const healthBar = document.getElementById("healthBar");
+    const bgm = document.getElementById("bgm");
+
+    // ==== Web Audio Setup for Glitch Tone ====
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playGlitchTone() {
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(200, now);
+      gainNode.gain.setValueAtTime(0.5, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      osc.connect(gainNode).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
+
+    // ==== Game Variables ====
+    let gameStarted = false;
+    let beatIntervalId = null;
+    let animationId = null;
+    let beatCount = 0;
+    let currentStage = 1;
+    const maxStages = 10;
+
+    /* Stage lengths (in beats):
+       Stages 1–3 ramp quickly (10, 20, 50),
+       Stages 4–6 stay long (100 each),
+       then taper off (50, 20, 10, 10) */
+    const beatsPerStageArray = [
+      10,  20,  50, 100, 100,
+      100, 50, 20,  10,  10
+    ];
+
+    // Lives & Multiplier
+    let lives = 10;
+    let multiplier = 1;
+    const maxLives = 10;
+
+    // Boss Health (now 100)
+    const bossMaxHealth = 100;
+    let bossHealth = bossMaxHealth;
+
+    // BPM sync: 147 BPM → ~408 ms per beat
+    const beatIntervalBase = 60000 / 147;
+
+    // ==== Screen Shake & Glitch ====
+    let shakeFrames = 0;
+    let glitchFrames = 0;
+
+    // ==== Player ====
+    const playerRadius = 40;
+    const player = {
+      x: playerRadius + 20,
+      y: H - playerRadius - 20,
+      radius: playerRadius,
+      color: "#00ffff",
+      pulseActive: false,
+      pulseRadius: 0,
+      /* Thinner sweet‐spot: 180→190 (10px total) */
+      pulseInner: 180,
+      pulseOuter: 190,
+      pulseSpeed: 12,
+      pulseAlpha: 1,
+    };
+
+    // ==== Boss ====
+    const bossRadius = 80;
+    const boss = {
+      centerX: W - bossRadius - 60,
+      centerY: bossRadius + 40,
+      radius: bossRadius,
+      driftRadius: 5,
+      driftSpeed: 0.002,
+      pulseProgress: 1,
+      pulseFrames: 20,
+    };
+    const bossImg = new Image();
+    bossImg.src = "techno_boss.png";
+
+    // ==== Projectile Class ====
+    class Projectile {
+      constructor(type) {
+        this.type = type; // "cyan" or "magenta"
+        this.color = (type === "magenta") ? "#ff00ff" : "#00ffff";
+        this.radius = (type === "magenta") ? 15 : 12;
+        this.x = boss.centerX;
+        this.y = boss.centerY;
+        this.speed = 5; // initial outbound speed
+        const angle = Math.atan2(
+          player.y - boss.centerY,
+          player.x - boss.centerX
+        );
+        this.vx = Math.cos(angle) * this.speed;
+        this.vy = Math.sin(angle) * this.speed;
+
+        this.deflected = false;
+        this.processed = false;
+
+        // For magnetic curved return:
+        this.curveCounter = 0;    // frames of horizontal veer
+        this.lateralDir = 0;      // ±1 direction for initial veer
+      }
+
+      update() {
+        if (!this.deflected) {
+          // Outbound, straightforward
+          this.x += this.vx;
+          this.y += this.vy;
+
+          // Check collision with player
+          const dx = this.x - player.x;
+          const dy = this.y - player.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < player.radius + this.radius) {
+            if (this.type === "magenta") {
+              // Absorb magenta
+              multiplier++;
+              updateMultiplierText();
+              gainLife();
+            } else {
+              // Missed cyan → glitch + shake + buzzer
+              loseLife();
+              triggerGlitch();
+              playGlitchTone();
+            }
+            this.markForDeletion = true;
+            spawnParticles(this.x, this.y, this.color);
+          }
+        } else {
+          // Magnetic return with initial horizontal veer
+          if (this.curveCounter > 0) {
+            // Phase 1: move purely horizontally for N frames
+            this.vx = this.lateralDir * this.speed;
+            this.vy = 0;
+            this.x += this.vx;
+            this.curveCounter--;
+          } else {
+            // Phase 2: magnetic attraction + acceleration
+            const dx = boss.centerX - this.x;
+            const dy = boss.centerY - this.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > 1) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              this.speed *= 1.02; // accelerate by 2% each frame
+              this.x += nx * this.speed;
+              this.y += ny * this.speed;
+            }
+          }
+
+          // Check collision with boss
+          const dx2 = this.x - boss.centerX;
+          const dy2 = this.y - boss.centerY;
+          const dist2 = Math.hypot(dx2, dy2);
+          if (dist2 < boss.radius + this.radius) {
+            bossHealth--;
+            updateBossHealthText();
+            spawnShapeParticles(this.x, this.y);
+            this.markForDeletion = true;
+            if (bossHealth <= 0) {
+              winGame();
+            }
+          }
+        }
+      }
+
+      draw() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 20;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    const projectiles = [];
+
+    // ==== Particle Class (small circles for player collisions) ====
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.life = 60;
+        this.color = color;
+        this.radius = Math.random() * 4 + 2;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 4 + 2;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.98;
+        this.vy *= 0.98;
+        this.life--;
+      }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.max(this.life / 60, 0);
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 15;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    const particles = [];
+
+    // ==== ShapeParticle Class (on boss hit: circle/square/triangle) ====
+    class ShapeParticle {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 60;
+        this.alpha = 1;
+        this.shape = ["circle", "square", "triangle"][
+          Math.floor(Math.random() * 3)
+        ];
+        this.size = Math.random() * 6 + 4; // initial small
+        this.maxSize = this.size * (Math.random() * 2 + 2); // grow 2–4×
+        this.color = ["#00ffff", "#ff00ff"][
+          Math.floor(Math.random() * 2)
+        ];
+        // initial random “spark” velocity
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 3 + 2;
+        this.vx = Math.cos(angle) * speed;
+        this.vy = Math.sin(angle) * speed;
+      }
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vx *= 0.95;
+        this.vy *= 0.95;
+        this.size += (this.maxSize - this.size) * 0.1;
+        this.alpha -= 0.02;
+        if (this.alpha < 0) this.alpha = 0;
+        this.life--;
+      }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = this.color;
+        if (this.shape === "circle") {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (this.shape === "square") {
+          ctx.fillRect(
+            this.x - this.size / 2,
+            this.y - this.size / 2,
+            this.size,
+            this.size
+          );
+        } else if (this.shape === "triangle") {
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y - this.size / 2);
+          ctx.lineTo(this.x + this.size / 2, this.y + this.size / 2);
+          ctx.lineTo(this.x - this.size / 2, this.y + this.size / 2);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    const shapeParticles = [];
+
+    // Spawn small circle particles (player collisions)
+    function spawnParticles(x, y, color) {
+      for (let i = 0; i < 15; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    // Spawn shape particles on boss hit
+    function spawnShapeParticles(x, y) {
+      for (let i = 0; i < 20; i++) {
+        shapeParticles.push(new ShapeParticle(x, y));
+      }
+    }
+
+    // ==== Electric Flare Class (for ring & boss pulses) ====
+    class ElectricFlare {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.life = 30;
+        this.alpha = 1;
+        this.type = Math.random() < 0.5 ? "circle" : "square";
+        this.size = Math.random() * 10 + 10;
+        this.maxSize = this.size * 1.5;
+      }
+      update() {
+        this.life--;
+        this.alpha = Math.max(this.life / 30, 0);
+        this.size += (this.maxSize - this.size) * 0.1;
+      }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = this.alpha;
+        ctx.fillStyle = "#ffffff";
+        ctx.shadowColor = "#00ffff";
+        ctx.shadowBlur = 20;
+        if (this.type === "circle") {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(
+            this.x - this.size / 2,
+            this.y - this.size / 2,
+            this.size,
+            this.size
+          );
+        }
+        ctx.restore();
+      }
+    }
+    const flares = [];
+
+    // ==== Echo Pulse Class (for ring & boss) ====
+    class EchoPulse {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.radius = 10;
+        this.maxRadius = 100;
+        this.alpha = 0.6;
+      }
+      update() {
+        this.radius += (this.maxRadius - this.radius) * 0.1;
+        this.alpha -= 0.02;
+        if (this.alpha < 0) this.alpha = 0;
+      }
+      draw() {
+        ctx.save();
+        ctx.beginPath();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "#ffffff";
+        ctx.globalAlpha = this.alpha;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 20;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    const pulses = [];
+
+    // ==== Utility Functions ====
+    function loseLife() {
+      lives = Math.max(lives - 1, 0);
+      updateLivesText();
+      if (lives <= 0) {
+        gameOver();
+      }
+    }
+
+    function gainLife() {
+      lives = Math.min(lives + 1, maxLives);
+      updateLivesText();
+    }
+
+    function updateLivesText() {
+      livesText.textContent = `Lives: ${lives}`;
+    }
+
+    function updateMultiplierText() {
+      multiplierText.textContent = `Multiplier: ${multiplier}×`;
+    }
+
+    function updateStageText() {
+      stageText.textContent = `Stage: ${currentStage}`;
+    }
+
+    function updateBossHealthText() {
+      bossHealthText.textContent = `Boss Health: ${bossHealth} / ${bossMaxHealth}`;
+      const ratio = bossHealth / bossMaxHealth;
+      if (ratio < 0.3) {
+        healthBar.style.background = "#ff00ff";
+      } else {
+        healthBar.style.background =
+          "linear-gradient(90deg, #00ffff 0%, #ff00ff 100%)";
+      }
+      healthBar.style.width = `${ratio * 100}%`;
+    }
+
+    function clearProjectiles() {
+      projectiles.length = 0;
+      shapeParticles.length = 0;
+      particles.length = 0;
+      flares.length = 0;
+      pulses.length = 0;
+    }
+
+    function winGame() {
+      // Don't stop music—fade it out over 3 seconds
+      const fadeDuration = 3.0; // seconds
+      const initialVolume = bgm.volume;
+      const fadeSteps = 30;
+      let stepCount = 0;
+      const fadeInterval = setInterval(() => {
+        stepCount++;
+        bgm.volume = initialVolume * (1 - stepCount / fadeSteps);
+        if (stepCount >= fadeSteps) {
+          clearInterval(fadeInterval);
+          bgm.volume = 0;
+        }
+      }, (fadeDuration * 1000) / fadeSteps);
+
+      cancelAnimationFrame(animationId);
+      clearInterval(beatIntervalId);
+      overlay.style.display = "flex";
+      overlay.textContent = "YOU WIN!";
+      uiContainer.style.display = "none";
+      healthBarContainer.style.display = "none";
+      gameStarted = false;
+    }
+
+    function gameOver() {
+      cancelAnimationFrame(animationId);
+      clearInterval(beatIntervalId);
+      overlay.style.display = "flex";
+      overlay.textContent = "GAME OVER";
+      uiContainer.style.display = "none";
+      healthBarContainer.style.display = "none";
+      gameStarted = false;
+      bgm.pause();
+    }
+
+    function nextStage() {
+      if (currentStage < maxStages) {
+        currentStage++;
+        updateStageText();
+        overlay.style.display = "flex";
+        overlay.textContent = `Stage ${currentStage}`;
+        setTimeout(() => {
+          overlay.style.display = "none";
+        }, 1000);
+      }
+    }
+
+    // ==== Screen Shake & Glitch Functions ====
+    function triggerShake() {
+      shakeFrames = 15; // shake for 15 frames
+    }
+
+    function triggerGlitch() {
+      glitchFrames = 20; // glitch tint for 20 frames
+    }
+
+    function applyShakeAndGlitch() {
+      if (shakeFrames > 0) {
+        const dx = Math.random() * 6 - 3;
+        const dy = Math.random() * 6 - 3;
+        ctx.translate(dx, dy);
+        shakeFrames--;
+      }
+      if (glitchFrames > 0) {
+        const alpha = 0.8;
+        ctx.fillStyle = `rgba(255,0,0,${alpha})`;
+        ctx.fillRect(0, 0, W, H);
+        glitchFrames--;
+      }
+    }
+
+    // ==== Beat & Spawn Logic with Half/Quarter Beats ====
+    function startSpawning() {
+      beatCount = 0;
+      currentStage = 1;
+      updateStageText();
+      updateBossHealthText();
+
+      overlay.style.display = "flex";
+      overlay.textContent = `Stage ${currentStage}`;
+      setTimeout(() => {
+        overlay.style.display = "none";
+      }, 1000);
+
+      beatIntervalId = setInterval(() => {
+        spawnOnBeat();
+
+        if (currentStage >= 4) {
+          setTimeout(() => {
+            spawnOnBeat(true);
+          }, beatIntervalBase / 2);
+        }
+        if (currentStage >= 7) {
+          setTimeout(() => {
+            spawnOnBeat(true, 0.5);
+          }, beatIntervalBase / 4);
+          setTimeout(() => {
+            spawnOnBeat(true, 0.5);
+          }, (beatIntervalBase * 3) / 4);
+        }
+
+        beatCount++;
+        const threshold = beatsPerStageArray[currentStage - 1];
+        if (beatCount === threshold) {
+          nextStage();
+        }
+      }, beatIntervalBase);
+    }
+
+    function spawnOnBeat(isOffbeat = false, falloff = 0) {
+      let missProb = Math.max(0.5 - (currentStage - 1) * 0.02, 0.1);
+      let cyanProb = Math.min(0.3 + (currentStage - 1) * 0.015, 0.6);
+      if (isOffbeat) {
+        missProb = Math.min(missProb + 0.15, 0.9);
+        cyanProb = Math.max(cyanProb - 0.08, 0.1);
+      }
+      const r = Math.random();
+      if (r < missProb) {
+        // no spawn
+      } else if (r < missProb + cyanProb) {
+        const p = new Projectile("cyan");
+        // When deflected later, assign lateralDir & curveCounter then
+        projectiles.push(p);
+        triggerBossPulse();
+      } else {
+        projectiles.push(new Projectile("magenta"));
+        triggerBossPulse();
+      }
+    }
+
+    // ==== Input Handling ====
+    window.addEventListener("keydown", (e) => {
+      if (!gameStarted) return;
+      if (e.code === "Space") {
+        triggerPulse();
+      }
+    });
+    canvas.addEventListener("click", () => {
+      if (!gameStarted) return;
+      triggerPulse();
+    });
+
+    function triggerPulse() {
+      if (player.pulseActive) return;
+      player.pulseActive = true;
+      player.pulseRadius = 0;
+      player.pulseAlpha = 1;
+      projectiles.forEach((proj) => (proj.processed = false));
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const fx = player.x + Math.cos(angle) * (player.radius + 10);
+        const fy = player.y + Math.sin(angle) * (player.radius + 10);
+        flares.push(new ElectricFlare(fx, fy));
+      }
+      pulses.push(new EchoPulse(player.x, player.y));
+    }
+
+    // ==== Boss Pulse ====
+    function triggerBossPulse() {
+      boss.pulseProgress = 0;
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const fx = boss.centerX + Math.cos(angle) * (boss.radius + 8);
+        const fy = boss.centerY + Math.sin(angle) * (boss.radius + 8);
+        flares.push(new ElectricFlare(fx, fy));
+      }
+      pulses.push(new EchoPulse(boss.centerX, boss.centerY));
+    }
+
+    // ==== Main Animation Loop ====
+    function gameLoop(timestamp) {
+      ctx.save();
+      applyShakeAndGlitch();
+      ctx.clearRect(0, 0, W, H);
+
+      // Draw ghost outline ring pulsing to beat
+      drawGhostOutlineRing(timestamp);
+
+      // Draw player + boss at all times
+      drawPlayer();
+      drawBoss(timestamp);
+
+      if (gameStarted) {
+        // Update & draw projectiles
+        projectiles.forEach((proj) => {
+          // If just now deflected (proj.deflected), assign curveCounter & lateralDir:
+          if (proj.deflected && proj.curveCounter === 0 && !proj.processed) {
+            proj.lateralDir = Math.random() < 0.5 ? -1 : 1;
+            proj.curveCounter = 15; // 15 frames of pure horizontal motion
+            proj.processed = true;  // mark that we've initialized deflection
+          }
+          proj.update();
+          proj.draw();
+        });
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+          const p = projectiles[i];
+          if (
+            p.markForDeletion ||
+            p.x < -50 ||
+            p.x > W + 50 ||
+            p.y < -50 ||
+            p.y > H + 50
+          ) {
+            projectiles.splice(i, 1);
+          }
+        }
+
+        // Update & draw simple circle particles (player collisions)
+        particles.forEach((p) => {
+          p.update();
+          p.draw();
+        });
+        for (let i = particles.length - 1; i >= 0; i--) {
+          if (particles[i].life <= 0) {
+            particles.splice(i, 1);
+          }
+        }
+
+        // Update & draw shape particles (boss collisions)
+        shapeParticles.forEach((sp) => {
+          sp.update();
+          sp.draw();
+        });
+        for (let i = shapeParticles.length - 1; i >= 0; i--) {
+          if (shapeParticles[i].life <= 0) {
+            shapeParticles.splice(i, 1);
+          }
+        }
+
+        // Update & draw electric flares
+        flares.forEach((f) => {
+          f.update();
+          f.draw();
+        });
+        for (let i = flares.length - 1; i >= 0; i--) {
+          if (flares[i].life <= 0) {
+            flares.splice(i, 1);
+          }
+        }
+
+        // Update & draw echo pulses
+        pulses.forEach((p) => {
+          p.update();
+          p.draw();
+        });
+        for (let i = pulses.length - 1; i >= 0; i--) {
+          if (pulses[i].alpha <= 0) {
+            pulses.splice(i, 1);
+          }
+        }
+
+        // Handle pulse ring and sweet spot detection
+        if (player.pulseActive) {
+          player.pulseRadius += player.pulseSpeed;
+          player.pulseAlpha -= 0.015;
+          if (player.pulseAlpha < 0) player.pulseAlpha = 0;
+
+          // Draw solid (thin) sweet-spot ring (10px)
+          const ringRadius = (player.pulseInner + player.pulseOuter) / 2;
+          const ringWidth = player.pulseOuter - player.pulseInner; // 10px
+          ctx.save();
+          ctx.beginPath();
+          ctx.lineWidth = ringWidth;
+          ctx.strokeStyle = "#00ffff";
+          ctx.globalAlpha = player.pulseAlpha;
+          ctx.shadowColor = "#00ffff";
+          ctx.shadowBlur = 30;
+          ctx.arc(player.x, player.y, ringRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+
+          // Check each projectile if in sweet spot
+          projectiles.forEach((proj) => {
+            if (proj.processed && proj.deflected) return;
+            const dx = proj.x - player.x;
+            const dy = proj.y - player.y;
+            const dist = Math.hypot(dx, dy);
+            if (
+              dist >= player.pulseInner - proj.radius &&
+              dist <= player.pulseOuter + proj.radius
+            ) {
+              proj.processed = false; // allow re‐checking if we used processed for deflection init
+              if (!proj.deflected) {
+                if (proj.type === "cyan") {
+                  proj.deflected = true;
+                } else {
+                  loseLife();
+                  triggerShake();
+                  playGlitchTone();
+                  proj.markForDeletion = true;
+                  spawnParticles(proj.x, proj.y, proj.color);
+                }
+              }
+            }
+          });
+
+          if (player.pulseRadius >= player.pulseOuter) {
+            player.pulseActive = false;
+          }
+        }
+      }
+
+      ctx.restore();
+      animationId = requestAnimationFrame(gameLoop);
+    }
+
+    // ==== Draw Ghost Outline Ring ====
+    function drawGhostOutlineRing(timestamp) {
+      const t = ((timestamp % beatIntervalBase) / beatIntervalBase) * Math.PI * 2;
+      const scalePulse = 1 + 0.05 * Math.sin(t); // ±5%
+      const alphaPulse = 0.6 + 0.1 * (Math.sin(t) * 0.5 + 0.5); // 0.6→0.7
+      const ringRadiusMid =
+        ((player.pulseInner + player.pulseOuter) / 2) * scalePulse;
+      const ringWidth = (player.pulseOuter - player.pulseInner) * scalePulse;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.lineWidth = ringWidth * 0.2; // 20% thickness for ghost
+      ctx.strokeStyle = "#00ffff";
+      ctx.globalAlpha = alphaPulse;
+      ctx.shadowColor = "#00ffff";
+      ctx.shadowBlur = 15;
+      ctx.arc(player.x, player.y, ringRadiusMid, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ==== Draw Player & Boss Helpers ====
+    function drawPlayer() {
+      ctx.save();
+      ctx.beginPath();
+      ctx.fillStyle = player.color;
+      ctx.shadowColor = player.color;
+      ctx.shadowBlur = 20;
+      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawBoss(timestamp) {
+      const driftAngle = timestamp * boss.driftSpeed;
+      const dx = Math.sin(driftAngle) * boss.driftRadius;
+      const dy = Math.cos(driftAngle) * boss.driftRadius;
+      const drawX = boss.centerX + dx;
+      const drawY = boss.centerY + dy;
+
+      if (boss.pulseProgress < 1) {
+        boss.pulseProgress += 1 / boss.pulseFrames;
+      }
+      const t = Math.min(boss.pulseProgress, 1);
+      const scale = 1 + 0.1 * Math.sin(Math.PI * t);
+
+      const drawWidth = boss.radius * 2 * scale;
+      const drawHeight = boss.radius * 2 * scale;
+
+      ctx.save();
+      ctx.translate(drawX, drawY);
+      if (bossImg.complete) {
+        ctx.drawImage(
+          bossImg,
+          -drawWidth / 2,
+          -drawHeight / 2,
+          drawWidth,
+          drawHeight
+        );
+      } else {
+        // fallback circle if image not loaded
+        ctx.beginPath();
+        ctx.fillStyle = "#ff00ff";
+        ctx.shadowColor = "#ff00ff";
+        ctx.shadowBlur = 20;
+        ctx.arc(0, 0, boss.radius * scale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // ==== Start Button Handler ====
+    startButton.addEventListener("click", () => {
+      if (gameStarted) return;
+      gameStarted = true;
+      startButton.style.display = "none";
+      uiContainer.style.display = "block";
+      healthBarContainer.style.display = "block";
+      updateLivesText();
+      updateMultiplierText();
+      updateStageText();
+      updateBossHealthText();
+
+      overlay.style.display = "flex";
+      overlay.textContent = "Get Ready!";
+      setTimeout(() => {
+        overlay.style.display = "none";
+        bgm.currentTime = 0;
+        bgm.volume = 1;
+        bgm.play();
+        startSpawning();
+      }, 1000);
+    });
+
+    // ==== Kick off the render loop immediately ====
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
