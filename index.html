@@ -208,30 +208,27 @@
     let glitchFrames = 0;
 
     // ==== Player ====
-const playerRadius = 40;
 const player = {
-  x: playerRadius + 20,
-  y: 0,                     // Dummy placeholder; resizeCanvas() will set the “real” y
-  radius: playerRadius,
+  x: 0,      // placeholder; resizeCanvas() sets the real x
+  y: 0,      // placeholder; resizeCanvas() sets the real y
+  radius: 40,     // initial fallback (will be overwritten in resizeCanvas())
   color: "#00ffff",
   pulseActive: false,
   pulseRadius: 0,
-  pulseInner: 180,
-  pulseOuter: 190,
+  pulseInner: 180, // fallback (will be overwritten on mobile)
+  pulseOuter: 190, // fallback
   pulseSpeed: 12,
   pulseAlpha: 1,
 };
-// —— Preload the digi_bird sprite ——
+// Preload the digi_bird sprite:
 const playerImg = new Image();
 playerImg.src = "digi_bird.png";
 
-
 // ==== Boss ====
-const bossRadius = 80;
 const boss = {
-  centerX: 0,                // Dummy placeholder; resizeCanvas() will set the “real” centerX
-  centerY: 0,                // Dummy placeholder; resizeCanvas() will set the “real” centerY
-  radius: bossRadius,
+  centerX: 0,   // placeholder; resizeCanvas() sets the real x
+  centerY: 0,   // placeholder; resizeCanvas() sets the real y
+  radius: 80,   // initial fallback (will be overwritten in resizeCanvas())
   driftRadius: 5,
   driftSpeed: 0.002,
   pulseProgress: 1,
@@ -240,37 +237,66 @@ const boss = {
 const bossImg = new Image();
 bossImg.src = "techno_boss.png";
 
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+// We’ll store player.radius and boss.radius directly on those objects.
+// (Your previous code probably had a fixed `const playerRadius = 40;` etc. 
+//  We’ll override player.radius and boss.radius below.)
+
 function resizeCanvas() {
-  // Grab devicePixelRatio so we render crisply on phones/tablets
-  const dpr = window.devicePixelRatio || 1;
-  // CSS size (the “on-screen” size)
+  // 1) CAP the devicePixelRatio (DPR) to 2 on phones/tablets to avoid a huge  
+  //    physical canvas size that kills performance.
+  const rawDpr = window.devicePixelRatio || 1;
+  const dpr    = rawDpr > 2 ? 2 : rawDpr;
+
+  // 2) Determine CSS size of the viewport:
   const cssWidth  = window.innerWidth;
   const cssHeight = window.innerHeight;
-  // Canvas pixel size = CSS size × DPR
+
+  // 3) Set the canvas’s actual pixel size = CSS size × DPR:
   canvas.width  = cssWidth  * dpr;
   canvas.height = cssHeight * dpr;
-  // Scale the drawing context so 1 unit = 1 CSS px
-  ctx.resetTransform();        // clear any existing transforms
+
+  // 4) Scale the drawing context so that all draws are in "CSS pixels":
+  ctx.resetTransform();
   ctx.scale(dpr, dpr);
 
-  // Update logical “W” and “H” to the CSS dimensions
+  // 5) Update our logical W / H (in CSS px):
   W = cssWidth;
   H = cssHeight;
 
-  // Reposition any objects tied to W/H
-  player.x = player.radius + 20;
-  player.y = H - player.radius - 20;
-  boss.centerX = W - boss.radius - 20;
-  boss.centerY = boss.radius + 20;
+  // 6) Now choose sizes for player & boss based on screen width:
+  if (W < 600) {
+    // On mobile (narrow screens), make everything bigger proportionally:
+    player.radius = W * 0.12;       // 12% of screen width
+    boss.radius   = W * 0.24;       // 24% of screen width
+    // Adjust the sweet‐spot ring to scale with the new player radius:
+    player.pulseInner = player.radius * 4;
+    player.pulseOuter = player.pulseInner + player.radius * 0.15;
+  } else {
+    // On desktop/tablet, keep your original fixed sizes:
+    player.radius = 40;
+    boss.radius   = 80;
+    player.pulseInner = 180;
+    player.pulseOuter = 190;
+  }
+
+  // 7) Re‐position the player about 75% down the screen,
+  //    and the boss about 25% down the screen (so they’re not at extreme top/bottom):
+  player.x = W / 2;                   // center horizontally
+  player.y = H * 0.75;                // 75% down
+
+  boss.centerX = W / 2;               // center horizontally
+  boss.centerY = H * 0.25;            // 25% down
 }
 
-// Call once, then on every resize
+// Keep the declarations of W and H above, but make sure they're defined before resize:
 let W, H;
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
+
 // ———————————————————————————————
     // ==== Projectile Class ====
     class Projectile {
