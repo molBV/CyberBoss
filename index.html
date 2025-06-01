@@ -143,19 +143,40 @@
        =========================================== */
 
     // ==== Canvas Setup ====
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    let W = (canvas.width = window.innerWidth);
-    let H = (canvas.height = window.innerHeight);
+// —— Responsive High-DPI Canvas Setup ——
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-    window.addEventListener("resize", () => {
-      W = canvas.width = window.innerWidth;
-      H = canvas.height = window.innerHeight;
-      player.x = playerRadius + 20;
-      player.y = H - playerRadius - 20;
-      boss.centerX = W - bossRadius - 60;
-      boss.centerY = bossRadius + 40;
-    });
+function resizeCanvas() {
+  // Grab devicePixelRatio so we render crisply on phones/tablets
+  const dpr = window.devicePixelRatio || 1;
+  // CSS size (the “on-screen” size)
+  const cssWidth  = window.innerWidth;
+  const cssHeight = window.innerHeight;
+  // Canvas pixel size = CSS size × DPR
+  canvas.width  = cssWidth  * dpr;
+  canvas.height = cssHeight * dpr;
+  // Scale the drawing context so 1 unit = 1 CSS px
+  ctx.resetTransform();        // clear any existing transforms
+  ctx.scale(dpr, dpr);
+
+  // Update logical “W” and “H” to the CSS dimensions
+  W = cssWidth;
+  H = cssHeight;
+
+  // Reposition any objects tied to W/H
+  player.x = player.radius + 20;
+  player.y = H - player.radius - 20;
+  boss.centerX = W - boss.radius - 20;
+  boss.centerY = boss.radius + 20;
+}
+
+// Call once, then on every resize
+let W, H;
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+// ———————————————————————————————
+
 
     // ==== DOM Elements ====
     const startButton = document.getElementById("startButton");
@@ -232,6 +253,11 @@
       pulseSpeed: 12,
       pulseAlpha: 1,
     };
+    // —— Preload the digi_bird sprite ——
+const playerImg = new Image();
+playerImg.src = "digi_bird.png";  // ← make sure this matches your filename and path
+// ————————————————————————
+
 
     // ==== Boss ====
     const bossRadius = 80;
@@ -711,6 +737,12 @@
       if (!gameStarted) return;
       triggerPulse();
     });
+    canvas.addEventListener("touchstart", (e) => {
+  e.preventDefault();   // stops the browser from treating this as a scroll/zoom
+  if (!gameStarted) return;
+  triggerPulse();
+});
+
 
     function triggerPulse() {
       if (player.pulseActive) return;
@@ -898,16 +930,45 @@
     }
 
     // ==== Draw Player & Boss Helpers ====
-    function drawPlayer() {
-      ctx.save();
-      ctx.beginPath();
-      ctx.fillStyle = player.color;
-      ctx.shadowColor = player.color;
-      ctx.shadowBlur = 20;
-      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    // ==== Draw Player (using digi_bird.png) ====
+function drawPlayer() {
+  ctx.save();
+
+  // 1) Draw a faint "orb" ring when not actively pulsing:
+  if (!player.pulseActive) {
+    ctx.beginPath();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(0,255,255, 0.2)";
+    ctx.shadowColor = "rgba(0,255,255,0.5)";
+    ctx.shadowBlur = 15;
+    ctx.arc(player.x, player.y, player.radius + 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 2) Draw the digi_bird sprite at (player.x, player.y)
+  if (playerImg.complete) {
+    // drawSize = diameter of your sprite (you can tweak this if you want it a little bigger or smaller)
+    const drawSize = player.radius * 2;
+    ctx.drawImage(
+      playerImg,
+      player.x - drawSize / 2,
+      player.y - drawSize / 2,
+      drawSize,
+      drawSize
+    );
+  } else {
+    // fallback: draw the old glowing circle until the image loads
+    ctx.beginPath();
+    ctx.fillStyle = player.color;
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 20;
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 
     function drawBoss(timestamp) {
       const driftAngle = timestamp * boss.driftSpeed;
