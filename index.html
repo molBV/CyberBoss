@@ -208,39 +208,38 @@
     let glitchFrames = 0;
 
     // ==== Player ====
-    const playerRadius = 40;
-    const player = {
-      x: playerRadius + 20,
-      y: H - playerRadius - 20,
-      radius: playerRadius,
-      color: "#00ffff",
-      pulseActive: false,
-      pulseRadius: 0,
-      /* Thinner sweet‐spot: 180→190 (10px total) */
-      pulseInner: 180,
-      pulseOuter: 190,
-      pulseSpeed: 12,
-      pulseAlpha: 1,
-    };
-    // —— Preload the digi_bird sprite ——
+const playerRadius = 40;
+const player = {
+  x: playerRadius + 20,
+  y: 0,                     // Dummy placeholder; resizeCanvas() will set the “real” y
+  radius: playerRadius,
+  color: "#00ffff",
+  pulseActive: false,
+  pulseRadius: 0,
+  pulseInner: 180,
+  pulseOuter: 190,
+  pulseSpeed: 12,
+  pulseAlpha: 1,
+};
+// —— Preload the digi_bird sprite ——
 const playerImg = new Image();
-playerImg.src = "digi_bird.png";  // ← make sure this matches your filename and path
-// ————————————————————————
+playerImg.src = "digi_bird.png";
 
 
-    // ==== Boss ====
-    const bossRadius = 80;
-    const boss = {
-      centerX: W - bossRadius - 60,
-      centerY: bossRadius + 40,
-      radius: bossRadius,
-      driftRadius: 5,
-      driftSpeed: 0.002,
-      pulseProgress: 1,
-      pulseFrames: 20,
-    };
-    const bossImg = new Image();
-    bossImg.src = "techno_boss.png";
+// ==== Boss ====
+const bossRadius = 80;
+const boss = {
+  centerX: 0,                // Dummy placeholder; resizeCanvas() will set the “real” centerX
+  centerY: 0,                // Dummy placeholder; resizeCanvas() will set the “real” centerY
+  radius: bossRadius,
+  driftRadius: 5,
+  driftSpeed: 0.002,
+  pulseProgress: 1,
+  pulseFrames: 20,
+};
+const bossImg = new Image();
+bossImg.src = "techno_boss.png";
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
